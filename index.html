@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Q&A with Transformers.js</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      text-align: center;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      margin-top: 10px;
+    }
+    button {
+      padding: 10px 15px;
+      margin-top: 10px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #answer {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Ask Questions About Your PDF</h1>
+    <input type="file" id="pdfFile" accept=".pdf">
+    <button id="extractBtn">Extract Text</button>
+
+    <textarea id="userQuestion" placeholder="Type your question here..."></textarea>
+    <button id="askBtn">Ask Question</button>
+
+    <div id="answer"></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script type="module">
+    import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers';
+    const qaPipeline = await pipeline('question-answering', 'Xenova/distilbert-base-cased-distilled-squad');
+   
+    function purifyString(input) {
+  if (typeof input !== 'string') return '';
+
+  // Step 1: Normalize Unicode
+  let purified = input.normalize('NFKC');
+
+  // Step 2: Remove non-printable characters
+  purified = purified.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+
+  // Step 3: Replace multiple spaces or line breaks with a single space
+  purified = purified.replace(/\s+/g, ' ');
+
+  // Step 4: Trim leading and trailing whitespace
+  purified = purified.trim();
+
+  return purified;
+}
+
+    let extractedText = '';
+
+    // Button to extract text from PDF
+    document.getElementById('extractBtn').addEventListener('click', async () => {
+      const fileInput = document.getElementById('pdfFile');
+      if (!fileInput.files.length) {
+        alert('Please select a PDF file!');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      try {
+        extractedText = await extractTextFromPDF(file);
+        alert('Text extracted from the PDF successfully!');
+      } catch (error) {
+        console.error('Error extracting text:', error);
+        alert('Failed to extract text from the PDF.');
+      }
+    });
+
+    // Extract text from PDF using PDF.js
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let text = '';
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(' ') + '\n';
+      }
+
+      return purifyString(text);
+    }
+
+    // Button to ask questions about the extracted text
+    document.getElementById('askBtn').addEventListener('click', async () => {
+  if (!extractedText) {
+    alert('Please extract text from a PDF first!');
+    return;
+  }
+
+  const question = document.getElementById('userQuestion').value.trim();
+  if (!question) {
+    alert('Please enter a question!');
+    return;
+  }
+
+  try {
+    // Ensure inputs are strings
+    const context = String(extractedText);
+    const validatedQuestion = String(question);
+    console.log("context:: ",context);
+    console.log('Question::', validatedQuestion);
+
+    
+    // Answer question
+    const result = await qaPipeline({
+      question: validatedQuestion,
+      context: context,
+    });
+
+    document.getElementById('answer').innerText = `Answer: ${result.answer}`;
+  } catch (error) {
+    console.error('Error answering question:', error);
+    alert('Failed to answer the question. Check the console for details.');
+  }
+});
+
+  </script>
+</body>
+</html>
